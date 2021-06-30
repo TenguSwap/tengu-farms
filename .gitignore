@@ -1,0 +1,12 @@
+.idea/
+.env/
+/abi/
+/build/
+/node_modules/
+/venv/
+
+#Buidler files
+cache
+artifacts
+coverage
+coverage.json
