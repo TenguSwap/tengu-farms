@@ -24,17 +24,14 @@ module.exports = async function(deployer, network, accounts) {
      */
     deployer.deploy(TenguToken)
     .then((instance) => {
-        tenguTokenInstance = instance;
         /**
          * Mint intial tokens for liquidity pool
          */
+         tenguTokenInstance = instance;
          tenguTokenInstance.mint(currentAccount, BigNumber.from(INITIAL_TOKEN_LIQUIDITY).mul(BigNumber.from(String(10**18))))
     })
     .then((tx) => {
         logTx(tx);
         return ;
-    })
-    .then((instance) => {
-
     })
 };

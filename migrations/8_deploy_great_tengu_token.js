@@ -17,6 +17,8 @@ module.exports = async function(deployer, network, accounts) {
     let currentAccount = DEPLOYER_ADDRESS;
     console.log({currentAccount});
 
+    let tenguTokenInstance;
+
     /**
      * Deploy TenguToken
      */
@@ -24,17 +26,16 @@ module.exports = async function(deployer, network, accounts) {
     .then((instance) => {
         instance.setTenguContractAddress(TenguToken.address);
     })
-    .then(() => {
+    .then((greatTenguTokenInstance) => {
         TenguToken.deployed()
         .then((instance) => {
-            instance.setGTenguContractAddress(GreatTenguToken.address);
-        })
+            tenguTokenInstance = instance;
+            tenguTokenInstance.setGTenguContractAddress(GreatTenguToken.address);
+            tenguTokenInstance.setExcludedFromAntiWhale(GreatTenguToken.address, true);
+        });
     })
     .then((tx) => {
         logTx(tx);
         return ;
-    })
-    .then((instance) => {
-
     })
 };

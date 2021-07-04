@@ -11,28 +11,28 @@ contract('GreatTenguToken', ([alice, bob, operator, owner]) => {
         await this.gtengu.setTenguContractAddress(this.tengu.address, { from: owner });
         await this.tengu.setGTenguContractAddress(this.gtengu.address, { from: owner });
         this.BURN_ADDRESS = await this.gtengu.BURN_ADDRESS();
-        this.SWAP_TO_GTENGU_DEFAULT_FEE = await this.gtengu.swapToGTenguFee();
-        this.SWAP_TO_GTENGU_MAX_FEE = await this.gtengu.SWAP_TO_GTENGU_MAX_FEE();
+        this.SWAP_TO_GTENGU_DEFAULT_FEE = await this.gtengu.swapTenguToGTenguFee();
+        this.SWAP_TENGU_TO_GTENGU_MAX_FEE = await this.gtengu.SWAP_TENGU_TO_GTENGU_MAX_FEE();
     });
 
-    describe('swapToGTengu', () => {
+    describe('swapTenguToGTengu', () => {
 
         it('when amount of tengu to swap is 0', async () => {
-            await expectRevert(this.gtengu.swapToGTengu(0, { from: alice }), 'GTENGU::swapToGTengu: amount 0');
+            await expectRevert(this.gtengu.swapTenguToGTengu(0, { from: alice }), 'GTENGU::swapTenguToGTengu: amount 0');
         });
 
         it('when the amount to swap is > to the balance of the sender', async () => {
-            await expectRevert(this.gtengu.swapToGTengu(1000, { from: alice }), 'GTENGU::swapToGTengu: not enough TENGU');
+            await expectRevert(this.gtengu.swapTenguToGTengu(1000, { from: alice }), 'GTENGU::swapTenguToGTengu: not enough TENGU');
         });
 
         it('swap 1000 tengu', async () => {
             await this.tengu.mint(alice, 5000, { from: owner });
-            const gTenguToMint = (await this.gtengu.getSwapToGTenguAmount(1000)).toString();
+            const gTenguToMint = (await this.gtengu.getSwapTenguToGTenguAmount(1000)).toString();
 
             assert.equal((await this.tengu.balanceOf(alice)).toString(), '5000');
 
             await this.tengu.approve(this.gtengu.address, 1000, { from: alice });
-            await this.gtengu.swapToGTengu(1000, { from: alice });
+            await this.gtengu.swapTenguToGTengu(1000, { from: alice });
 
             assert.equal((await this.tengu.balanceOf(this.BURN_ADDRESS)).toString(), '1000');
             assert.equal((await this.tengu.balanceOf(alice)).toString(), '4000');
@@ -41,54 +41,54 @@ contract('GreatTenguToken', ([alice, bob, operator, owner]) => {
 
     });
 
-    describe('setSwapToGTenguFee', () => {
+    describe('setSwapTenguToGTenguFee', () => {
 
         it('when the sender is not the owner', async () => {
-            await expectRevert(this.gtengu.setSwapToGTenguFee(1000, { from: alice }), 'Ownable: caller is not the owner');
+            await expectRevert(this.gtengu.setSwapTenguToGTenguFee(1000, { from: alice }), 'Ownable: caller is not the owner');
         });
 
         it('set fee to 0', async () => {
-            const receipt = await this.gtengu.setSwapToGTenguFee(0, { from: owner });
+            const receipt = await this.gtengu.setSwapTenguToGTenguFee(0, { from: owner });
 
-            assert.equal((await this.gtengu.swapToGTenguFee()).toString(), '0');
+            assert.equal((await this.gtengu.swapTenguToGTenguFee()).toString(), '0');
 
-            await expectEvent(receipt, 'SetSwapToGTenguFee', {
+            await expectEvent(receipt, 'SetSwapTenguToGTenguFee', {
                 previousFee: this.SWAP_TO_GTENGU_DEFAULT_FEE.toString(),
                 newFee: '0'
             });
         });
 
         it('set fee to max fee', async () => {
-            const newFee = this.SWAP_TO_GTENGU_MAX_FEE.toString();
-            const receipt = await this.gtengu.setSwapToGTenguFee(newFee, { from: owner });
+            const newFee = this.SWAP_TENGU_TO_GTENGU_MAX_FEE.toString();
+            const receipt = await this.gtengu.setSwapTenguToGTenguFee(newFee, { from: owner });
 
-            assert.equal((await this.gtengu.swapToGTenguFee()).toString(), newFee);
+            assert.equal((await this.gtengu.swapTenguToGTenguFee()).toString(), newFee);
 
-            await expectEvent(receipt, 'SetSwapToGTenguFee', {
+            await expectEvent(receipt, 'SetSwapTenguToGTenguFee', {
                 previousFee: this.SWAP_TO_GTENGU_DEFAULT_FEE.toString(),
                 newFee: newFee
             });
         });
 
         it('when the swap fee to set is higher than the max authorized', async () => {
-            const newFee = (this.SWAP_TO_GTENGU_MAX_FEE + 1).toString();
+            const newFee = (this.SWAP_TENGU_TO_GTENGU_MAX_FEE + 1).toString();
 
-            await expectRevert(this.gtengu.setSwapToGTenguFee(newFee, { from: owner }), 'GTENGU::swapToGTengu: fee too high');
+            await expectRevert(this.gtengu.setSwapTenguToGTenguFee(newFee, { from: owner }), 'GTENGU::swapTenguToGTengu: fee too high');
         });
 
     });
 
-    describe('getSwapToGTenguAmount', () => {
+    describe('getSwapTenguToGTenguAmount', () => {
 
         it('when the amount is 0', async () => {
-            assert.equal((await this.gtengu.getSwapToGTenguAmount(0)).toString(), '0');
+            assert.equal((await this.gtengu.getSwapTenguToGTenguAmount(0)).toString(), '0');
         });
 
         it('is fee correctly calculated', async () => {
-            const swapToGTenguFee = await this.gtengu.swapToGTenguFee()
+            const swapTenguToGTenguFee = await this.gtengu.swapTenguToGTenguFee()
             const tenguToSwap = 251;
-            const gTenguToReceive = Math.trunc(tenguToSwap * (10000 - swapToGTenguFee) / 10000);
-            assert.equal((await this.gtengu.getSwapToGTenguAmount(251)).toString(), gTenguToReceive.toString());
+            const gTenguToReceive = Math.trunc(tenguToSwap * (10000 - swapTenguToGTenguFee) / 10000);
+            assert.equal((await this.gtengu.getSwapTenguToGTenguAmount(251)).toString(), gTenguToReceive.toString());
         });
 
     });

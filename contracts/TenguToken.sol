@@ -29,6 +29,8 @@ contract TenguToken is BEP20 {
     uint256 public swapGTenguToTenguFee = 2000;
     // Max fee to swap GTENGU to TENGU (30%)
     uint256 public constant SWAP_GTENGU_TO_TENGU_MAX_FEE = 3000;
+    // List to cancel GTENGU tax to master & pools contracts
+    mapping(address => bool) public excludedFromGTenguTax;
 
     // Max transfer amount rate in basis points. (default is 0.5% of total supply)
     uint256 public maxTransferAmountRate = 50;
@@ -36,8 +38,8 @@ contract TenguToken is BEP20 {
     uint256 public constant MIN_TRANSFER_AMOUNT_RATE = 30;
     // Addresses that excluded from antiWhale
     mapping(address => bool) private _excludedFromAntiWhale;
-    // Min amount to liquify. (default 500 TENGUs)
-    uint256 public minAmountToLiquify = 500 ether;
+    // Min amount to liquify. (default 50 TENGUs)
+    uint256 public minAmountToLiquify = 50 ether;
     // The swap router, modifiable. Will be changed to TenguSwap's router when our own AMM release
     IUniswapV2Router02 public tenguSwapRouter;
     // The trading pair
@@ -48,13 +50,20 @@ contract TenguToken is BEP20 {
     address public locker;
 
     /**
-    * @notice The operator can update the transfer tax rate and its repartition, and update the tenguSwapRouter
+    * @notice The operator can update the transfer tax rate and its repartition
     * It will be transferred to the timelock contract
     */
     address private _operator;
 
+    /**
+    * @notice The sensitive operator can update the tenguSwapRouter and the locker address
+    * It will be transferred to a second timelock contract w/ a much longer duration
+    */
+    address private _sensitiveOperator;
+
     // Events
     event OperatorTransferred(address indexed previousOperator, address indexed newOperator);
+    event SensitiveOperatorTransferred(address indexed previousOperator, address indexed newOperator);
     event TransferTaxRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
     event BurnRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
     event GTenguRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
@@ -65,9 +74,18 @@ contract TenguToken is BEP20 {
     event SetSwapGTenguToTenguFee(uint256 previousFee, uint256 newFee);
     event SwapGTenguToTengu(address indexed sender, address indexed recipient, uint256 gTenguAmount, uint256 tenguAmount);
     event LockerUpdated(address previousLocker, address newLocker);
+    event SetGTenguContractAddress(address gTengu);
+    event SetExcludedFromAntiWhale(address accountAddress, bool excluded);
+    event SetExcludedFromGTenguTax(address accountAddress, bool excluded);
+    event BuyBackAndBurn(uint256 ethAmount);
 
     modifier onlyOperator() {
         require(_operator == msg.sender, "operator: caller is not the operator");
+        _;
+    }
+
+    modifier onlySensitiveOperator() {
+        require(_sensitiveOperator == msg.sender, "operator: caller is not the sensitive operator");
         _;
     }
 
@@ -100,14 +118,16 @@ contract TenguToken is BEP20 {
     /**
      * @notice Constructs the TenguToken contract.
      */
-    constructor() public BEP20("TG Token", "TG") {
+    constructor() public BEP20("TENGU Token", "TENGU") {
         _operator = _msgSender();
         emit OperatorTransferred(address(0), _operator);
+        _sensitiveOperator = _msgSender();
+        emit SensitiveOperatorTransferred(address(0), _sensitiveOperator);
 
-        _excludedFromAntiWhale[msg.sender] = true;
-        _excludedFromAntiWhale[address(0)] = true;
-        _excludedFromAntiWhale[address(this)] = true;
-        _excludedFromAntiWhale[BURN_ADDRESS] = true;
+        setExcludedFromAntiWhale(msg.sender,  true);
+        setExcludedFromAntiWhale(address(0), true);
+        setExcludedFromAntiWhale(address(this), true);
+        setExcludedFromAntiWhale(BURN_ADDRESS, true);
     }
 
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
@@ -128,7 +148,14 @@ contract TenguToken is BEP20 {
             require(amount == sendAmount + taxAmount, "TENGU::transfer: Tax value invalid");
 
             uint256 burnAmount = taxAmount.mul(burnRate).div(100);
+
             uint256 toGTenguAmount = taxAmount.mul(gTenguRate).div(100);
+            // Exclude master and pools from GTengu swap (burn instead)
+            if (excludedFromGTenguTax[sender]) {
+                burnAmount = burnAmount.add(toGTenguAmount);
+                toGTenguAmount = 0;
+            }
+
             uint256 liquidityAmount = taxAmount.sub(burnAmount).sub(toGTenguAmount);
             require(taxAmount == burnAmount + toGTenguAmount + liquidityAmount, "TENGU::transfer: Burn value invalid");
 
@@ -137,7 +164,7 @@ contract TenguToken is BEP20 {
             super._transfer(sender, address(this), liquidityAmount.add(toGTenguAmount));
             super._transfer(sender, recipient, sendAmount);
             if (toGTenguAmount > 0) {
-                gTengu.swapToGTengu(toGTenguAmount, sender);
+                gTengu.swapTenguToGTengu(toGTenguAmount, sender);
             }
         }
     }
@@ -248,7 +275,7 @@ contract TenguToken is BEP20 {
      * Can only be called by the current operator.
      */
     function updateBurnRate(uint256 _burnRate) public onlyOperator {
-        require(_burnRate + gTenguRate <= 100, "TENGU::updateBurnRate: GTengu + burn rates must not exceed the maximum rate.");
+        require(_burnRate.add(gTenguRate) <= 100, "TENGU::updateBurnRate: GTengu + burn rates must not exceed the maximum rate.");
 
         uint256 previousBurnRate = burnRate;
         burnRate = _burnRate;
@@ -260,7 +287,7 @@ contract TenguToken is BEP20 {
      * Can only be called by the current operator.
      */
     function updateGTenguRate(uint256 _gTenguRate) public onlyOperator {
-        require(burnRate + _gTenguRate <= 100, "TENGU::updateGTenguRate: GTengu + burn rates must not exceed the maximum rate.");
+        require(burnRate.add(_gTenguRate) <= 100, "TENGU::updateGTenguRate: GTengu + burn rates must not exceed the maximum rate.");
 
         uint256 previousGTenguRate = gTenguRate;
         gTenguRate = _gTenguRate;
@@ -272,7 +299,7 @@ contract TenguToken is BEP20 {
      * Can only be called by the current operator.
      */
     function updateMaxTransferAmountRate(uint256 _maxTransferAmountRate) public onlyOperator {
-        require(_maxTransferAmountRate <= 10000, "TENGU::updateMaxTransferAmountRate: Max transfer amount rate must not exceed the maximum rate.");
+        require(_maxTransferAmountRate <= 50, "TENGU::updateMaxTransferAmountRate: Max transfer amount rate must not exceed the maximum rate.");
         require(_maxTransferAmountRate >= MIN_TRANSFER_AMOUNT_RATE, "TENGU::updateMaxTransferAmountRate: Min transfer amount rate must be above the minimum rate.");
 
         uint256 previousMaxTransferAmountRate = maxTransferAmountRate;
@@ -296,13 +323,14 @@ contract TenguToken is BEP20 {
      */
     function setExcludedFromAntiWhale(address _account, bool _excluded) public onlyOperator {
         _excludedFromAntiWhale[_account] = _excluded;
+        emit SetExcludedFromAntiWhale(_account, _excluded);
     }
 
     /**
      * @dev Update the swap router.
-     * Can only be called by the current operator.
+     * Can only be called by the current sensitiveOperator.
      */
-    function updateTenguSwapRouter(address _router) public onlyOperator {
+    function updateTenguSwapRouter(address _router) public onlySensitiveOperator {
         tenguSwapRouter = IUniswapV2Router02(_router);
         tenguSwapPair = IUniswapV2Factory(tenguSwapRouter.factory()).getPair(address(this), tenguSwapRouter.WETH());
         require(tenguSwapPair != address(0), "TENGU::updateTenguSwapRouter: Invalid pair address.");
@@ -311,13 +339,19 @@ contract TenguToken is BEP20 {
 
     /**
      * @dev Update the tengu locker contract.
-     * Can only be called by the current operator.
+     * Can only be called by the current sensitiveOperator.
      */
-    function updateLocker(address _locker) public onlyOperator {
+    function updateLocker(address _locker) public onlySensitiveOperator {
         require(_locker != address(0), "TENGU::updateTenguLocker: new operator is the zero address");
 
         address previousLocker = locker;
         locker = _locker;
+        // Remove previous locker from anti-whale
+        if (address(previousLocker) != address(0)) {
+            setExcludedFromAntiWhale(address(previousLocker), false);
+        }
+        // Exclude new locker from anti-whale
+        setExcludedFromAntiWhale(address(locker), true);
         emit LockerUpdated(previousLocker, locker);
     }
 
@@ -326,6 +360,13 @@ contract TenguToken is BEP20 {
      */
     function operator() public view returns (address) {
         return _operator;
+    }
+
+    /**
+     * @dev Returns the address of the current sensitive operator.
+     */
+    function sensitiveOperator() public view returns (address) {
+        return _sensitiveOperator;
     }
 
     /**
@@ -341,23 +382,43 @@ contract TenguToken is BEP20 {
     }
 
     /**
+     * @dev Transfers sensitiveOperator of the contract to a new account (`newOperator`).
+     * Can only be called by the current sensitiveOperator.
+     */
+    function transferSensitiveOperator(address newOperator) public onlySensitiveOperator {
+        require(newOperator != address(0), "TENGU::transferSensitiveOperator: new operator is the zero address");
+
+        address previousOperator = _operator;
+        _sensitiveOperator = newOperator;
+        emit SensitiveOperatorTransferred(previousOperator, _sensitiveOperator);
+    }
+
+    /**
      * @dev Swap an amount of GTengu for the corresponding amount of newly minted Tengu. Burn the swapped GTengu.
      */
-    function swapGTenguToTengu(uint256 amount) external {
+    function _swapGTenguToTengu(address sender, address recipient, uint256 amount) internal {
         require(amount > 0, "TENGU::swapGTenguToTengu: amount 0");
-        require(gTengu.balanceOf(msg.sender) >= amount, "TENGU::swapGTenguToTengu: not enough GTENGU");
+        require(gTengu.balanceOf(sender) >= amount, "TENGU::swapGTenguToTengu: not enough GTENGU");
 
         uint256 tenguAmount = getSwapGTenguToTenguAmount(amount);
-        super._mint(msg.sender, tenguAmount);
-        gTengu.safeTransferFrom(msg.sender, BURN_ADDRESS, amount);
-        emit SwapGTenguToTengu(msg.sender, msg.sender, amount, tenguAmount);
+        _mint(recipient, tenguAmount);
+        gTengu.safeTransferFrom(sender, BURN_ADDRESS, amount);
+        emit SwapGTenguToTengu(sender, recipient, amount, tenguAmount);
+    }
+
+    function swapGTenguToTengu(uint256 amount) external {
+        _swapGTenguToTengu(msg.sender, msg.sender, amount);
+    }
+
+    function swapGTenguToTengu(uint256 amount, address recipient) external {
+        _swapGTenguToTengu(msg.sender, recipient, amount);
     }
 
     /**
      * @dev Set the fee when swapping GTengu for Tengu.
      * Can only be called by the current operator.
      */
-    function setSwapGTenguToTenguFee(uint256 fee) external onlyOperator() {
+    function setSwapGTenguToTenguFee(uint256 fee) external onlyOperator {
         require(fee <= SWAP_GTENGU_TO_TENGU_MAX_FEE, "TENGU::setSwapGTenguToTenguFee: fee too high");
 
         uint256 previousFee = swapGTenguToTenguFee;
@@ -378,13 +439,47 @@ contract TenguToken is BEP20 {
      * Can only be called by the current operator.
      * Can only be called once.
      */
-    function setGTenguContractAddress(IGreatTengu gTengu_) external onlyOperator() {
+    function setGTenguContractAddress(IGreatTengu gTengu_) external onlyOperator {
         require(address(gTengu) == address(0), "TENGU::setGTenguContractAddress: already initialized");
 
         gTengu = gTengu_;
+        // Exclude GTengu contract from anti-whale
+        setExcludedFromAntiWhale(address(gTengu), true);
         // Authorize GTengu contract to transfer (to the burn address) the Tengu we want to swap to GTengu
         // cf GreatTenguToken._swapToGTengu()
         _approve(address(this), address(gTengu), uint256(-1));
+        emit SetGTenguContractAddress(address(gTengu));
+    }
+
+    /**
+     * @dev Exclude or include an address from GTengu tax.
+     * Used for the Master and the Tengu pools.
+     * Can only be called by the current operator.
+     */
+    function setExcludedFromGTenguTax(address _account, bool _excluded) public onlyOperator {
+        excludedFromGTenguTax[_account] = _excluded;
+        emit SetExcludedFromGTenguTax(_account, _excluded);
+    }
+
+    /**
+     * @dev To handle the BNB dust that may build up on the contract
+     * Use the BNB to buy back and burn TENGU
+     */
+    function buyBackAndBurn() external onlyOperator {
+        // generate the tenguSwap pair path of weth -> token
+        address[] memory path = new address[](2);
+        path[0] = tenguSwapRouter.WETH();
+        path[1] = address(this);
+
+        uint256 ethAmount = address(this).balance;
+        // make the swap
+        tenguSwapRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ethAmount}(
+            0, // accept any amount of TENGU
+            path,
+            BURN_ADDRESS,
+            block.timestamp
+        );
+        emit BuyBackAndBurn(ethAmount);
     }
 
 }

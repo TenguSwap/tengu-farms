@@ -13,15 +13,21 @@ const logTx = (tx) => {
 }
 
 module.exports = async function(deployer, network, accounts) {
-    let masterInstance;
-    console.log(START_BLOCK)
+
+    let tenguTokenInstance;
+
     deployer.deploy(MasterChef,
         TenguToken.address,
         BigNumber.from(START_BLOCK),
         BigNumber.from(TOKENS_PER_BLOCK).mul(BigNumber.from(String(10**18)))
     )
-    .then((instance) => {
-        masterInstance = instance;
+    .then((masterInstance) => {
+        TenguToken.deployed()
+            .then((instance) => {
+                tenguTokenInstance = instance;
+                tenguTokenInstance.setExcludedFromAntiWhale(MasterChef.address, true);
+                tenguTokenInstance.setExcludedFromGTenguTax(MasterChef.address, true);
+            })
     })
     .then(() => {
 

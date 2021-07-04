@@ -1,6 +1,7 @@
 require('dotenv').config()
 
 const TenguLocker = artifacts.require("TenguLocker");
+const TenguToken = artifacts.require("TenguToken");
 
 
 const logTx = (tx) => {
@@ -8,8 +9,15 @@ const logTx = (tx) => {
 }
 
 module.exports = async function(deployer, network, accounts) {
+
+    let tenguTokenInstance;
+
     deployer.deploy(TenguLocker)
-        .then((instance) => {
-            console.log(instance)
+        .then((lockerInstance) => {
+            TenguToken.deployed()
+                .then((instance) => {
+                    tenguTokenInstance = instance;
+                    tenguTokenInstance.setExcludedFromAntiWhale(TenguLocker.address, true);
+                })
         })
 }
