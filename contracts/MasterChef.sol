@@ -62,7 +62,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
     // TENGU tokens created per block.
     uint256 public tenguPerBlock;
     // Max tokens / block
-    uint256 public constant MAX_EMISSION_RATE = 10;
+    uint256 public constant MAX_EMISSION_RATE = 10 ether;
     // Bonus muliplier for early tengu makers.
     uint256 public constant BONUS_MULTIPLIER = 1;
     // Max harvest interval: 14 days.
