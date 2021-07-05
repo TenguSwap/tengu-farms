@@ -236,10 +236,11 @@ contract MasterChef is Ownable, ReentrancyGuard {
                 uint256 depositFee = _amount.mul(pool.depositFeeBP).div(10000);
                 pool.lpToken.safeTransfer(feeAddress, depositFee);
                 user.amount = user.amount.add(_amount).sub(depositFee);
+                pool.lpSupply = pool.lpSupply.add(_amount).sub(depositFee);
             } else {
                 user.amount = user.amount.add(_amount);
+                pool.lpSupply = pool.lpSupply.add(_amount);
             }
-            pool.lpSupply = pool.lpSupply.add(_amount);
         }
         user.rewardDebt = user.amount.mul(pool.accTenguPerShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
