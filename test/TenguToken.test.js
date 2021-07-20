@@ -282,4 +282,27 @@ contract('TenguToken', ([alice, bob, carol, operator, sensitiveOperator, owner])
         assert.equal((await this.tengu.balanceOf(this.burnAddress)).toString(), '120');
         assert.equal((await this.tengu.balanceOf(this.tengu.address)).toString(), '40');
     });
+
+    it('transfer tax exclusions', async() => {
+        await expectRevert(this.tengu.setExcludedFromTransferTax(alice, true, { from: alice }), 'operator: caller is not the operator');
+        await this.tengu.setExcludedFromTransferTax(alice, true, { from: owner });
+
+        // Test once alice is in dict
+        await this.tengu.mint(alice, 1000000, { from: owner });
+        await this.tengu.transfer(bob, 1000, { from: alice });
+        assert.equal((await this.tengu.balanceOf(alice)).toString(), '999000');
+        assert.equal((await this.tengu.balanceOf(bob)).toString(), '1000');
+        assert.equal((await this.gtengu.balanceOf(alice)).toString(), '0');
+        assert.equal((await this.tengu.balanceOf(this.burnAddress)).toString(), '0');
+        assert.equal((await this.tengu.balanceOf(this.tengu.address)).toString(), '0');
+
+        // Test after alice is removed from dict
+        await this.tengu.setExcludedFromTransferTax(alice, false, { from: owner });
+        await this.tengu.transfer(bob, 1000, { from: alice });
+        assert.equal((await this.tengu.balanceOf(alice)).toString(), '998000');
+        assert.equal((await this.tengu.balanceOf(bob)).toString(), '1920');
+        assert.equal((await this.gtengu.balanceOf(alice)).toString(), '36');
+        assert.equal((await this.tengu.balanceOf(this.burnAddress)).toString(), '60');
+        assert.equal((await this.tengu.balanceOf(this.tengu.address)).toString(), '20');
+    })
 });

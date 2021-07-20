@@ -31,6 +31,8 @@ contract TenguToken is BEP20 {
     uint256 public constant SWAP_GTENGU_TO_TENGU_MAX_FEE = 3000;
     // List to cancel GTENGU tax to master & pools contracts
     mapping(address => bool) public excludedFromGTenguTax;
+    // Addresses excluded from whole transfer tax
+    mapping(address => bool) public excludedFromTransferTax;
 
     // Max transfer amount rate in basis points. (default is 0.5% of total supply)
     uint256 public maxTransferAmountRate = 50;
@@ -77,6 +79,7 @@ contract TenguToken is BEP20 {
     event SetGTenguContractAddress(address gTengu);
     event SetExcludedFromAntiWhale(address accountAddress, bool excluded);
     event SetExcludedFromGTenguTax(address accountAddress, bool excluded);
+    event SetExcludedFromTransferTax(address accountAddress, bool excluded);
     event BuyBackAndBurn(uint256 ethAmount);
 
     modifier onlyOperator() {
@@ -137,7 +140,7 @@ contract TenguToken is BEP20 {
 
     /// @dev overrides transfer function to meet tokenomics of TENGU
     function _transfer(address sender, address recipient, uint256 amount) internal virtual override antiWhale(sender, recipient, amount) {
-        if (recipient == BURN_ADDRESS || transferTaxRate == 0) {
+        if (recipient == BURN_ADDRESS || transferTaxRate == 0 || excludedFromTransferTax[sender] || excludedFromTransferTax[recipient]) {
             super._transfer(sender, recipient, amount);
         } else {
             // default tax is 8% of every transfer
@@ -449,6 +452,16 @@ contract TenguToken is BEP20 {
         // cf GreatTenguToken._swapToGTengu()
         _approve(address(this), address(gTengu), uint256(-1));
         emit SetGTenguContractAddress(address(gTengu));
+    }
+
+    /**
+     * @dev Exclude or include an address from transfer tax.
+     * Used for the Master and some internal project addresses
+     * Can only be called by the current operator.
+     */
+    function setExcludedFromTransferTax(address _account, bool _excluded) public onlyOperator {
+        excludedFromTransferTax[_account] = _excluded;
+        emit SetExcludedFromTransferTax(_account, _excluded);
     }
 
     /**
