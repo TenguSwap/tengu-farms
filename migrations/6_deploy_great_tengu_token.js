@@ -1,22 +1,10 @@
-const { BigNumber } = require("@ethersproject/bignumber");
 require('dotenv').config()
 
 const GreatTenguToken = artifacts.require("GreatTenguToken");
 const TenguToken = artifacts.require("TenguToken");
 
-const DEPLOYER_ADDRESS = process.env.DEPLOYER_ADDRESS;
-
-
-const logTx = (tx) => {
-    console.dir(tx, {depth: 3});
-}
 
 module.exports = async function(deployer, network, accounts) {
-    console.log({network});
-
-    let currentAccount = DEPLOYER_ADDRESS;
-    console.log({currentAccount});
-
     let tenguTokenInstance;
 
     /**
@@ -24,18 +12,18 @@ module.exports = async function(deployer, network, accounts) {
      */
     deployer.deploy(GreatTenguToken)
     .then((instance) => {
+        // Set TENGU address into GTENGU token contract
         instance.setTenguContractAddress(TenguToken.address);
     })
-    .then((greatTenguTokenInstance) => {
+    .then(() => {
         TenguToken.deployed()
         .then((instance) => {
             tenguTokenInstance = instance;
+
+            // Set GTENGU address into TENGU token contract
             tenguTokenInstance.setGTenguContractAddress(GreatTenguToken.address);
+            // Exclude from antiwhale
             tenguTokenInstance.setExcludedFromAntiWhale(GreatTenguToken.address, true);
         });
-    })
-    .then((tx) => {
-        logTx(tx);
-        return ;
     })
 };

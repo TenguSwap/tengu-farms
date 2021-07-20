@@ -1,15 +1,24 @@
 require('dotenv').config()
 
+const MasterChef = artifacts.require("MasterChef");
 const TenguReferral = artifacts.require("TenguReferral");
 
 
-const logTx = (tx) => {
-    console.dir(tx, {depth: 3});
-}
-
 module.exports = async function(deployer, network, accounts) {
+    let masterChefInstance
+    let tenguReferralInstance
+
     deployer.deploy(TenguReferral)
-        .then((instance) => {
-            console.log(instance)
+        .then((tenguReferralInstance_) => {
+            tenguReferralInstance = tenguReferralInstance_
+            tenguReferralInstance.transferOwnership(MasterChef.address)
+        })
+        .then(() => {
+            MasterChef.deployed()
+                .then((masterChefInstance_) => {
+                    masterChefInstance = masterChefInstance_;
+                    // Set referral into MasterChef contract
+                    masterChefInstance.setTenguReferral(tenguReferralInstance.address);
+                })
         })
 }
