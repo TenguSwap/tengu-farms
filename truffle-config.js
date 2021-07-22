@@ -24,11 +24,25 @@ module.exports = {
       skipDryRun: true,
       from: process.env.DEPLOYER_ADDRESS.toString().trim(),
     },
+    bsc: {
+      provider: () => new HDWalletProvider(MNENOMIC, `https://bsc-dataseed1.defibit.io/`),
+      network_id: 56,
+      confirmations: 3,
+      timeoutBlocks: 200,
+      skipDryRun: false,
+      from: process.env.DEPLOYER_ADDRESS.toString().trim(),
+    },
   },
   //
   compilers: {
     solc: {
       version: "0.6.12"
     }
+  },
+  plugins: [
+    'truffle-plugin-verify'
+  ],
+  api_keys: {
+    bscscan: process.env.BSCSCAN_APIKEY.toString().trim()
   }
 };
